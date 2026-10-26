@@ -37,13 +37,19 @@ function setupCanvas() {
     return canvas as unknown as HTMLCanvasElement;
   });
 }
-function fixture(id: string, color: string, w = 600, h = 400): WallpaperPhoto {
+function fixture(
+  id: string,
+  color: string,
+  w = 600,
+  h = 400,
+  subject = true,
+): WallpaperPhoto {
   const canvas = createCanvas(w, h),
     ctx = canvas.getContext("2d");
   ctx.fillStyle = color;
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#fff";
-  ctx.fillRect(w * 0.8, h * 0.2, w * 0.1, h * 0.6);
+  if (subject) ctx.fillRect(w * 0.8, h * 0.2, w * 0.1, h * 0.6);
   const url = canvas.toDataURL("image/png");
   return {
     id,
@@ -64,6 +70,146 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("actual image export", () => {
+  it("mixes both photographs symmetrically and gives the same result in reverse draw order", async () => {
+    setupCanvas();
+    const photos = [
+      fixture("symmetric-red", "#f00", 600, 400, false),
+      fixture("symmetric-blue", "#00f", 600, 400, false),
+    ].map((p) => ({ ...p, protectedBox: undefined }));
+    const settings = {
+      ...defaultWallpaperSettings,
+      width: 640,
+      height: 360,
+      margin: 0,
+      feather: 36,
+      mode: "blend" as const,
+      keepSubjects: false,
+    };
+    const cells = [
+      {
+        id: photos[0].id,
+        photoId: photos[0].id,
+        x: 0,
+        y: 0,
+        width: 0.6,
+        height: 1,
+        rotation: 0,
+      },
+      {
+        id: photos[1].id,
+        photoId: photos[1].id,
+        x: 0.4,
+        y: 0,
+        width: 0.6,
+        height: 1,
+        rotation: 0,
+      },
+    ];
+    const a = document.createElement("canvas"),
+      b = document.createElement("canvas");
+    await renderWallpaper(
+      a,
+      photos,
+      { id: "sym", name: "Symmetric", cells },
+      settings,
+      {},
+    );
+    await renderWallpaper(
+      b,
+      photos,
+      { id: "sym", name: "Symmetric", cells: [...cells].reverse() },
+      settings,
+      {},
+    );
+    const ca = a.getContext("2d")!,
+      cb = b.getContext("2d")!;
+    const middle = ca.getImageData(320, 180, 1, 1).data;
+    expect(Math.abs(middle[0] - middle[2])).toBeLessThan(5);
+    for (let x = 258; x < 384; x += 3) {
+      const p = ca.getImageData(x, 180, 1, 1).data,
+        q = cb.getImageData(x, 180, 1, 1).data;
+      expect(p[0] + p[2]).toBeGreaterThanOrEqual(253);
+      expect(
+        Math.max(...Array.from(p).map((v, i) => Math.abs(v - q[i]))),
+      ).toBeLessThanOrEqual(2);
+    }
+  });
+  it("places a whole reduced portrait against a custom color and retains the full subject", async () => {
+    setupCanvas();
+    const photos = [fixture("placed-portrait", "#f00", 200, 400)];
+    const settings = {
+      ...defaultWallpaperSettings,
+      width: 800,
+      height: 400,
+      mode: "extend" as const,
+      background: "#123456",
+      extension: {
+        ...defaultWallpaperSettings.extension,
+        fill: "solid" as const,
+        softness: 0,
+      },
+    };
+    const layout = makeLayouts(photos, settings, 0)[0],
+      key = `${layout.id}:${photos[0].id}`;
+    const canvas = document.createElement("canvas");
+    await renderWallpaper(canvas, photos, layout, settings, {
+      [key]: {
+        x: 0.5,
+        y: 0.5,
+        zoom: 1,
+        fit: "auto",
+        placement: { x: 1, y: 0.5, scale: 0.5 },
+      },
+    });
+    const ctx = canvas.getContext("2d")!;
+    expect(Array.from(ctx.getImageData(20, 200, 1, 1).data)).toEqual([
+      18, 52, 86, 255,
+    ]);
+    expect(Array.from(ctx.getImageData(725, 200, 1, 1).data)).toEqual([
+      255, 0, 0, 255,
+    ]);
+    expect(Array.from(ctx.getImageData(785, 200, 1, 1).data)).toEqual([
+      255, 255, 255, 255,
+    ]);
+    expect(Array.from(ctx.getImageData(785, 270, 1, 1).data)).toEqual([
+      255, 0, 0, 255,
+    ]);
+  });
+  it.each(["texture", "blur", "color", "solid"] as const)(
+    "fills the complete extension canvas using %s",
+    async (fill) => {
+      setupCanvas();
+      const photos = [fixture(`extension-${fill}`, "#d74836", 200, 400)];
+      const settings = {
+        ...defaultWallpaperSettings,
+        width: 800,
+        height: 400,
+        mode: "extend" as const,
+        extension: {
+          ...defaultWallpaperSettings.extension,
+          fill,
+          effect: "both" as const,
+        },
+      };
+      const blob = await exportWallpaper(
+        photos,
+        makeLayouts(photos, settings, 0)[0],
+        settings,
+        {},
+      );
+      const decoded = await loadImage(
+        new Uint8Array(await (blob as unknown as NodeBlob).arrayBuffer()),
+      );
+      expect([decoded.width, decoded.height]).toEqual([800, 400]);
+      const canvas = createCanvas(800, 400);
+      canvas.getContext("2d").drawImage(decoded, 0, 0);
+      const pixels = canvas.getContext("2d").getImageData(0, 0, 800, 400).data;
+      let transparent = 0;
+      for (let i = 3; i < pixels.length; i += 4)
+        if (pixels[i] !== 255) transparent++;
+      expect(transparent).toBe(0);
+    },
+  );
   it("crossfades incoming photos without a dark gap between the images", async () => {
     setupCanvas();
     const photos = [

@@ -1,4 +1,15 @@
-export type WallpaperMode = "grid" | "overlap" | "blend" | "single";
+export type WallpaperMode = "grid" | "overlap" | "blend" | "single" | "extend";
+export interface PhotoPlacement {
+  x: number;
+  y: number;
+  scale: number;
+}
+export interface ExtensionSettings {
+  fill: "texture" | "blur" | "color" | "solid";
+  softness: number;
+  blur: number;
+  effect: "none" | "grain" | "vignette" | "both";
+}
 export interface Box {
   x: number;
   y: number;
@@ -33,6 +44,7 @@ export interface WallpaperSettings {
   keepSubjects: boolean;
   format: "png" | "jpeg" | "webp";
   quality: number;
+  extension: ExtensionSettings;
 }
 export interface WallpaperCell extends Box {
   id: string;
@@ -49,6 +61,7 @@ export interface CropAdjustment {
   y: number;
   zoom: number;
   fit: "auto" | "cover" | "contain";
+  placement?: PhotoPlacement;
 }
 export type Adjustments = Record<string, CropAdjustment>;
 export const defaultWallpaperSettings: WallpaperSettings = {
@@ -62,4 +75,6 @@ export const defaultWallpaperSettings: WallpaperSettings = {
   keepSubjects: true,
   format: "png",
   quality: 0.94,
+  extension: { fill: "texture", softness: 16, blur: 35, effect: "none" },
 };
+export const defaultPlacement: PhotoPlacement = { x: 0.5, y: 0.5, scale: 0.88 };

@@ -31,6 +31,8 @@ import {
   frameRect,
   outputSize,
   sourceCrop,
+  defaultAdjustment,
+  placedPhotoRect,
   validateSize,
 } from "@/wallpaper/geometry";
 import { makeLayouts } from "@/wallpaper/layout";
@@ -43,8 +45,16 @@ import { loadProject, saveProject } from "@/wallpaper/storage";
 import { zipFiles } from "@/wallpaper/zip";
 import { WallpaperCanvas } from "@/wallpaper/WallpaperCanvas";
 import { FramingEditor } from "@/wallpaper/FramingEditor";
+import { ExtensionControls } from "@/wallpaper/ExtensionControls";
+import {
+  archiveFilename,
+  exportTimestamp,
+  wallpaperFilename,
+} from "@/wallpaper/filenames";
 import {
   defaultWallpaperSettings,
+  defaultPlacement,
+  type PhotoPlacement,
   type Adjustments,
   type WallpaperMode,
   type WallpaperPhoto,
@@ -82,6 +92,12 @@ const modes: {
     detail: "Jedna fotka, jedna tapeta",
     icon: Images,
   },
+  {
+    id: "extend",
+    label: "Rozšířit okolí",
+    detail: "Jedna fotka s volným prostorem",
+    icon: ImagePlus,
+  },
 ];
 const presets = [
   ["Full HD", 1920, 1080],
@@ -116,6 +132,7 @@ export default function WallpaperStudio() {
   const [sizeMode, setSizeMode] = useState<"pixels" | "ratio">("pixels");
   const [ratio, setRatio] = useState({ w: 16, h: 9, edge: 3840 });
   const input = useRef<HTMLInputElement>(null);
+  const main = useRef<HTMLElement>(null);
   const photosRef = useRef(photos);
   photosRef.current = photos;
   const alive = useRef(true);
@@ -137,6 +154,25 @@ export default function WallpaperStudio() {
     [photos, settings, seed],
   );
   const layout = layouts[Math.min(selected, layouts.length - 1)];
+  const standalone = settings.mode === "single" || settings.mode === "extend";
+  const placementPhoto = photos.find((p) => p.id === layout?.cells[0]?.photoId);
+  const placement =
+    placementPhoto && layout
+      ? (adjustments[adjustmentKey(layout, placementPhoto.id)]?.placement ??
+        defaultPlacement)
+      : defaultPlacement;
+  const setPlacement = (photoId: string, nextPlacement: PhotoPlacement) => {
+    const photo = photosRef.current.find((p) => p.id === photoId);
+    if (!layout || !photo) return;
+    const key = adjustmentKey(layout, photoId);
+    setAdjustments((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? defaultAdjustment(photo)),
+        placement: nextPlacement,
+      },
+    }));
+  };
   const editedPhoto = photos.find((p) => p.id === editing);
   const update = (patch: Partial<WallpaperSettings>) =>
     setSettings((s) => ({ ...s, ...patch }));
@@ -165,7 +201,14 @@ export default function WallpaperStudio() {
         );
         if (alive.current) {
           setPhotos(restoredPhotos);
-          setSettings({ ...defaultWallpaperSettings, ...project.settings });
+          setSettings({
+            ...defaultWallpaperSettings,
+            ...project.settings,
+            extension: {
+              ...defaultWallpaperSettings.extension,
+              ...project.settings.extension,
+            },
+          });
           setSeed(project.seed);
           setAdjustments(project.adjustments);
         }
@@ -357,6 +400,7 @@ export default function WallpaperStudio() {
     if (validSize || !layout) return;
     setError("");
     const targets = all ? layouts : [layout];
+    const timestamp = exportTimestamp();
     try {
       const files: { name: string; blob: Blob }[] = [];
       for (let i = 0; i < targets.length; i++) {
@@ -368,14 +412,20 @@ export default function WallpaperStudio() {
           adjustments,
         );
         files.push({
-          name: `tapeta-${String(i + 1).padStart(2, "0")}-${settings.width}x${settings.height}.${extension(settings.format)}`,
+          name: wallpaperFilename(
+            all ? i : Math.min(selected, layouts.length - 1),
+            settings.width,
+            settings.height,
+            extension(settings.format),
+            timestamp,
+          ),
           blob,
         });
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
       const blob = all ? await zipFiles(files) : files[0].blob;
       const name = all
-        ? `gridwiggle-${settings.width}x${settings.height}.zip`
+        ? archiveFilename(settings.width, settings.height, timestamp)
         : files[0].name;
       if (readyDownload) {
         URL.revokeObjectURL(readyDownload.url);
@@ -413,6 +463,17 @@ export default function WallpaperStudio() {
   const warnings =
     layout?.cells.flatMap((cell) => {
       const photo = photos.find((p) => p.id === cell.photoId)!;
+      if (settings.mode === "extend") {
+        const placed = placedPhotoRect(
+          photo,
+          frameRect(cell, settings),
+          adjustments[adjustmentKey(layout, photo.id)]?.placement,
+        );
+        return placed.width > photo.width * 1.1 ||
+          placed.height > photo.height * 1.1
+          ? [`${photo.name}: při exportu se zvětší a může být méně ostrá.`]
+          : [];
+      }
       const frame = frameRect(cell, settings),
         crop = sourceCrop(
           photo,
@@ -493,8 +554,10 @@ export default function WallpaperStudio() {
                   <button
                     title={`Upravit ${photo.name}`}
                     onClick={() => {
-                      if (settings.mode === "single") setSelected(i);
-                      setEditing(photo.id);
+                      if (standalone) setSelected(i);
+                      setEditing(
+                        settings.mode === "extend" ? undefined : photo.id,
+                      );
                     }}
                   >
                     <img src={photo.previewUrl} alt={photo.name} />
@@ -576,6 +639,7 @@ export default function WallpaperStudio() {
                     update({ mode: id });
                     setSelected(0);
                     setEditing(undefined);
+                    main.current?.scrollTo({ top: 0 });
                   }}
                 >
                   <Icon size={18} />
@@ -584,52 +648,70 @@ export default function WallpaperStudio() {
                 </button>
               ))}
             </div>
-            <label className="wm-slider-label">
-              Mezery <strong>{settings.gap} px</strong>
-              <input
-                type="range"
-                aria-label="Mezery"
-                min="0"
-                max="100"
-                value={settings.gap}
-                disabled={settings.mode !== "grid"}
-                onChange={(e) => update({ gap: +e.target.value })}
+            {settings.mode === "extend" && (
+              <ExtensionControls
+                style={settings.extension}
+                placement={placement}
+                background={settings.background}
+                onStyle={(patch) =>
+                  update({ extension: { ...settings.extension, ...patch } })
+                }
+                onPlacement={(next) => {
+                  if (placementPhoto) setPlacement(placementPhoto.id, next);
+                }}
+                onBackground={(background) => update({ background })}
               />
-            </label>
-            <label className="wm-slider-label">
-              Vnější okraj <strong>{settings.margin} px</strong>
-              <input
-                type="range"
-                aria-label="Vnější okraj"
-                min="0"
-                max="200"
-                value={settings.margin}
-                onChange={(e) => update({ margin: +e.target.value })}
-              />
-            </label>
-            {settings.mode === "blend" && (
-              <label className="wm-slider-label">
-                Měkkost přechodů <strong>{settings.feather} %</strong>
-                <input
-                  type="range"
-                  aria-label="Měkkost přechodů"
-                  min="1"
-                  max="40"
-                  value={settings.feather}
-                  onChange={(e) => update({ feather: +e.target.value })}
-                />
-              </label>
             )}
-            <div className="wm-color-row">
-              <span>Pozadí</span>
-              <input
-                aria-label="Barva pozadí"
-                type="color"
-                value={settings.background}
-                onChange={(e) => update({ background: e.target.value })}
-              />
-              <code>{settings.background}</code>
-            </div>
+            {settings.mode !== "extend" && (
+              <>
+                <label className="wm-slider-label">
+                  Mezery <strong>{settings.gap} px</strong>
+                  <input
+                    type="range"
+                    aria-label="Mezery"
+                    min="0"
+                    max="100"
+                    value={settings.gap}
+                    disabled={settings.mode !== "grid"}
+                    onChange={(e) => update({ gap: +e.target.value })}
+                  />
+                </label>
+                <label className="wm-slider-label">
+                  Vnější okraj <strong>{settings.margin} px</strong>
+                  <input
+                    type="range"
+                    aria-label="Vnější okraj"
+                    min="0"
+                    max="200"
+                    value={settings.margin}
+                    onChange={(e) => update({ margin: +e.target.value })}
+                  />
+                </label>
+                {settings.mode === "blend" && (
+                  <label className="wm-slider-label">
+                    Měkkost přechodů <strong>{settings.feather} %</strong>
+                    <input
+                      type="range"
+                      aria-label="Měkkost přechodů"
+                      min="1"
+                      max="60"
+                      value={settings.feather}
+                      onChange={(e) => update({ feather: +e.target.value })}
+                    />
+                  </label>
+                )}
+                <div className="wm-color-row">
+                  <span>Pozadí</span>
+                  <input
+                    aria-label="Barva pozadí"
+                    type="color"
+                    value={settings.background}
+                    onChange={(e) => update({ background: e.target.value })}
+                  />
+                  <code>{settings.background}</code>
+                </div>
+              </>
+            )}
             <label className="wm-check">
               <input
                 type="checkbox"
@@ -639,8 +721,9 @@ export default function WallpaperStudio() {
               Chránit celý hlavní motiv
             </label>
             <p className="wm-hint">
-              Když se motiv nevejde do výřezu, ukáže se celá fotka s rozostřeným
-              pozadím.
+              {settings.mode === "extend"
+                ? "Fotografie zůstává celá. Ochrana udržuje hlavní motiv ostrý i v prolnutí s okolím."
+                : "Když se motiv nevejde do výřezu, ukáže se celá fotka s rozostřeným pozadím."}
             </p>
           </section>
           <section>
@@ -843,7 +926,7 @@ export default function WallpaperStudio() {
             </button>
           )}
         </aside>
-        <main className="wm-main">
+        <main ref={main} className="wm-main">
           <div className="wm-heading">
             <div>
               <span className="wm-eyebrow">TVÉ FOTKY. TVOJE PLOCHA.</span>
@@ -921,7 +1004,7 @@ export default function WallpaperStudio() {
                   </span>
                   <button
                     className="wm-secondary"
-                    disabled={!!busy || settings.mode === "single"}
+                    disabled={!!busy || standalone}
                     onClick={() => {
                       setSeed((n) => n + 1);
                       setSelected(0);
@@ -945,13 +1028,18 @@ export default function WallpaperStudio() {
                       settings={settings}
                       adjustments={adjustments}
                       onSelect={setEditing}
+                      onPlacement={
+                        settings.mode === "extend" ? setPlacement : undefined
+                      }
                     />
                   </div>
                 </div>
                 <div className="wm-preview-caption">
                   <span>
-                    <Crosshair size={14} /> Klikni na fotografii a uprav její
-                    výřez.
+                    <Crosshair size={14} />{" "}
+                    {settings.mode === "extend"
+                      ? "Táhni fotografii pro posun. Velikost a okolí upravíš vlevo."
+                      : "Klikni na fotografii a uprav její výřez."}
                   </span>
                   <span>
                     {settings.width} × {settings.height} px
@@ -970,13 +1058,12 @@ export default function WallpaperStudio() {
                 )}
                 <div className="wm-proposals-heading">
                   <h2>
-                    {settings.mode === "single"
+                    {standalone
                       ? "Samostatné tapety"
                       : "Najdi svůj oblíbený návrh"}
                   </h2>
                   <span>
-                    {layouts.length}{" "}
-                    {settings.mode === "single" ? "tapet" : "kompozic"}
+                    {layouts.length} {standalone ? "tapet" : "kompozic"}
                   </span>
                 </div>
                 <div className="wm-proposals">
@@ -1031,8 +1118,7 @@ export default function WallpaperStudio() {
               onClick={() => void handleExport(true)}
             >
               <ArrowDownToLine size={16} />{" "}
-              {settings.mode === "single" ? "Všechny tapety" : "Všech 6 návrhů"}{" "}
-              · ZIP
+              {standalone ? "Všechny tapety" : "Všech 6 návrhů"} · ZIP
             </button>
             <button
               className="wm-primary"

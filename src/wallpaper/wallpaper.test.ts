@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { defaultWallpaperSettings, type WallpaperPhoto } from "./types";
-import { frameRect, outputSize, sourceCrop, validateSize } from "./geometry";
+import {
+  frameRect,
+  outputSize,
+  placedPhotoRect,
+  sourceCrop,
+  validateSize,
+} from "./geometry";
 import { makeLayouts } from "./layout";
 import { subjectFraming } from "./analysis";
 
@@ -17,6 +23,33 @@ const photo = (id: string, w = 1200, h = 1800): WallpaperPhoto => ({
   analysis: "ready",
 });
 describe("exact output and protected crops", () => {
+  it("contains a reduced portrait and aligns it to either side without cropping or distortion", () => {
+    const p = photo("portrait", 1000, 1500),
+      frame = { x: 0, y: 0, width: 3840, height: 2160 };
+    const left = placedPhotoRect(p, frame, { x: 0, y: 0.5, scale: 0.5 });
+    const right = placedPhotoRect(p, frame, { x: 1, y: 0.5, scale: 0.5 });
+    expect(left).toEqual({ x: 0, y: 540, width: 720, height: 1080 });
+    expect(right.x + right.width).toBe(3840);
+    expect(right.width / right.height).toBeCloseTo(2 / 3);
+    expect(
+      frameRect(
+        { id: "x", photoId: "x", x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+        { ...defaultWallpaperSettings, mode: "extend", margin: 200 },
+      ),
+    ).toEqual(frame);
+  });
+  it("creates independent single-photo extension canvases for batch export", () => {
+    const layouts = makeLayouts(
+      [photo("a"), photo("b")],
+      { ...defaultWallpaperSettings, mode: "extend" },
+      0,
+    );
+    expect(layouts.map((l) => l.cells.map((c) => c.photoId))).toEqual([
+      ["a"],
+      ["b"],
+    ]);
+    expect(layouts[0].id).toBe("extend-a");
+  });
   it("resolves portrait, landscape and ultrawide ratios without stretching", () => {
     expect(outputSize(16, 9, 3840)).toEqual({ width: 3840, height: 2160 });
     expect(outputSize(2, 3, 3000)).toEqual({ width: 2000, height: 3000 });

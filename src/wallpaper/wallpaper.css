@@ -273,6 +273,67 @@
   gap: 7px;
   margin-bottom: 18px;
 }
+.wm-modes button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.wm-extension-controls {
+  margin-top: 16px;
+}
+.wm-placement-presets {
+  display: flex;
+  gap: 5px;
+}
+.wm-placement-presets button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 3px;
+  border: 1px solid #384330;
+  border-radius: 5px;
+  color: #a8b49c;
+  background: #1d241b;
+  font-size: 10px;
+}
+.wm-placement-presets button.active {
+  color: #e2f1d7;
+  border-color: #90ac76;
+  background: #303d27;
+}
+.wm-reset-placement {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 2px;
+}
+.wm-placement-handle {
+  position: absolute;
+  cursor: grab;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #d9efc9;
+  padding: 0;
+}
+.wm-placement-handle:active {
+  cursor: grabbing;
+}
+.wm-placement-handle:hover,
+.wm-placement-handle:focus-visible {
+  border: 1px dashed #d9efc9a0;
+  outline: none;
+}
+.wm-placement-handle span {
+  opacity: 0;
+  font-size: 10px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  background: #131b12cc;
+}
+.wm-placement-handle:hover span,
+.wm-placement-handle:focus-visible span {
+  opacity: 1;
+}
 .wm-modes button {
   display: flex;
   flex-direction: column;

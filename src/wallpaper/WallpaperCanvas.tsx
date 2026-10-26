@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { frameRect } from "./geometry";
-import { renderWallpaper } from "./render";
+import { clamp, frameRect, placedPhotoRect } from "./geometry";
+import { adjustmentKey, renderWallpaper } from "./render";
+import { defaultPlacement, type PhotoPlacement } from "./types";
 import type {
   Adjustments,
   WallpaperLayout,
@@ -16,6 +17,7 @@ export function WallpaperCanvas({
   thumbnail,
   onSelect,
   selected,
+  onPlacement,
 }: {
   photos: WallpaperPhoto[];
   layout: WallpaperLayout;
@@ -24,9 +26,11 @@ export function WallpaperCanvas({
   thumbnail?: boolean;
   onSelect?: (id: string) => void;
   selected?: string;
+  onPlacement?: (photoId: string, placement: PhotoPlacement) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState("");
+  const drag = useRef<{ x: number; y: number; placement: PhotoPlacement }>();
   useEffect(() => {
     let cancelled = false;
     setError("");
@@ -59,6 +63,98 @@ export function WallpaperCanvas({
         layout.cells.map((cell) => {
           const rect = frameRect(cell, settings);
           const photo = photos.find((p) => p.id === cell.photoId);
+          if (settings.mode === "extend" && photo && onPlacement) {
+            const placement =
+              adjustments[adjustmentKey(layout, photo.id)]?.placement ??
+              defaultPlacement;
+            const placed = placedPhotoRect(photo, rect, placement);
+            return (
+              <button
+                key={cell.id}
+                className="wm-placement-handle"
+                aria-label={`Posunout fotografii ${photo.name}`}
+                title="Táhni fotografii pro posun. Velikost upravíš vlevo."
+                style={{
+                  left: `${(placed.x / settings.width) * 100}%`,
+                  top: `${(placed.y / settings.height) * 100}%`,
+                  width: `${(placed.width / settings.width) * 100}%`,
+                  height: `${(placed.height / settings.height) * 100}%`,
+                  touchAction: "none",
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    ![
+                      "ArrowLeft",
+                      "ArrowRight",
+                      "ArrowUp",
+                      "ArrowDown",
+                    ].includes(e.key)
+                  )
+                    return;
+                  e.preventDefault();
+                  onPlacement(photo.id, {
+                    ...placement,
+                    x: clamp(
+                      placement.x +
+                        (e.key === "ArrowRight"
+                          ? 0.02
+                          : e.key === "ArrowLeft"
+                            ? -0.02
+                            : 0),
+                    ),
+                    y: clamp(
+                      placement.y +
+                        (e.key === "ArrowDown"
+                          ? 0.02
+                          : e.key === "ArrowUp"
+                            ? -0.02
+                            : 0),
+                    ),
+                  });
+                }}
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  drag.current = { x: e.clientX, y: e.clientY, placement };
+                }}
+                onPointerMove={(e) => {
+                  if (!drag.current) return;
+                  const canvas =
+                    e.currentTarget.parentElement!.getBoundingClientRect();
+                  const freeX =
+                      ((rect.width - placed.width) / settings.width) *
+                      canvas.width,
+                    freeY =
+                      ((rect.height - placed.height) / settings.height) *
+                      canvas.height;
+                  onPlacement(photo.id, {
+                    ...drag.current.placement,
+                    x:
+                      freeX > 0.5
+                        ? clamp(
+                            drag.current.placement.x +
+                              (e.clientX - drag.current.x) / freeX,
+                          )
+                        : placement.x,
+                    y:
+                      freeY > 0.5
+                        ? clamp(
+                            drag.current.placement.y +
+                              (e.clientY - drag.current.y) / freeY,
+                          )
+                        : placement.y,
+                  });
+                }}
+                onPointerUp={() => {
+                  drag.current = undefined;
+                }}
+                onPointerCancel={() => {
+                  drag.current = undefined;
+                }}
+              >
+                <span>Táhni fotografii pro posun</span>
+              </button>
+            );
+          }
           return (
             <button
               key={cell.id}

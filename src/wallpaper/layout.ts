@@ -119,9 +119,9 @@ export function makeLayouts(
   seed: number,
 ): WallpaperLayout[] {
   if (!photos.length) return [];
-  if (settings.mode === "single")
+  if (settings.mode === "single" || settings.mode === "extend")
     return photos.map((p, i) => ({
-      id: `single-${p.id}`,
+      id: `${settings.mode}-${p.id}`,
       name: `Tapeta ${i + 1}`,
       cells: [
         {
@@ -149,22 +149,26 @@ export function makeLayouts(
       rng,
     );
     if (settings.mode !== "grid" && photos.length > 1) {
-      const expansion =
-        settings.mode === "blend" ? 0.025 + settings.feather / 1500 : 0.035;
+      const transition =
+        (settings.feather / 100) * Math.min(settings.width, settings.height);
+      const expansionX =
+        settings.mode === "blend" ? transition / (2 * settings.width) : 0.035;
+      const expansionY =
+        settings.mode === "blend" ? transition / (2 * settings.height) : 0.035;
       cells = cells.map((cell) => {
         let expanded = {
           ...cell,
-          x: Math.max(0, cell.x - expansion),
-          y: Math.max(0, cell.y - expansion),
+          x: Math.max(0, cell.x - expansionX),
+          y: Math.max(0, cell.y - expansionY),
           width:
-            Math.min(1, cell.x + cell.width + expansion) -
-            Math.max(0, cell.x - expansion),
+            Math.min(1, cell.x + cell.width + expansionX) -
+            Math.max(0, cell.x - expansionX),
           height:
-            Math.min(1, cell.y + cell.height + expansion) -
-            Math.max(0, cell.y - expansion),
+            Math.min(1, cell.y + cell.height + expansionY) -
+            Math.max(0, cell.y - expansionY),
         };
         // Keep neighbouring subjects clear of overlaid cards. Rotation is only used without protection.
-        if (settings.keepSubjects) {
+        if (settings.keepSubjects && settings.mode === "overlap") {
           for (const other of cells) {
             if (other.photoId === cell.photoId) continue;
             const photo = photos.find((p) => p.id === other.photoId)!;

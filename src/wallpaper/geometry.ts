@@ -4,7 +4,9 @@ import type {
   WallpaperCell,
   WallpaperPhoto,
   WallpaperSettings,
+  PhotoPlacement,
 } from "./types";
+import { defaultPlacement } from "./types";
 
 export const clamp = (n: number, lo = 0, hi = 1) =>
   Math.max(lo, Math.min(hi, n));
@@ -34,6 +36,8 @@ export function frameRect(
   cell: WallpaperCell,
   settings: WallpaperSettings,
 ): Box {
+  if (settings.mode === "extend")
+    return { x: 0, y: 0, width: settings.width, height: settings.height };
   const margin = Math.min(
     settings.margin,
     Math.min(settings.width, settings.height) / 8,
@@ -49,6 +53,25 @@ export function frameRect(
     y: margin + cell.y * h + gap / 2,
     width: Math.max(1, cell.width * w - gap),
     height: Math.max(1, cell.height * h - gap),
+  };
+}
+
+/** Placement uses the free space around a contained photo, so either edge can be aligned exactly. */
+export function placedPhotoRect(
+  photo: Pick<WallpaperPhoto, "width" | "height">,
+  frame: Box,
+  placement: PhotoPlacement = defaultPlacement,
+): Box {
+  const fit =
+    Math.min(frame.width / photo.width, frame.height / photo.height) *
+    clamp(placement.scale, 0.15, 1);
+  const width = photo.width * fit,
+    height = photo.height * fit;
+  return {
+    x: frame.x + (frame.width - width) * clamp(placement.x),
+    y: frame.y + (frame.height - height) * clamp(placement.y),
+    width,
+    height,
   };
 }
 
