@@ -114,7 +114,8 @@ describe('CroppedImage', () => {
       // Expected translateX: (-100 / 1000) * 100 = -10%
       // Expected translateY: (-50 / 750) * 100 = -6.667%
       expect(style).toContain('-10%');
-      expect(style).toMatch(/-6\.6+%/);
+      const translateY = Number(style.match(/translate\([^,]+,\s*([\d.-]+)%\)/)?.[1]);
+      expect(translateY).toBeCloseTo(-50 / 750 * 100, 5);
     });
 
     it('sets maxWidth and maxHeight to none', () => {

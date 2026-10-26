@@ -9,6 +9,7 @@ import LayoutTest from "./pages/LayoutTest";
 import HeroFractionRating from "./pages/HeroFractionRating";
 import Help from "./pages/Help";
 import { remoteLogger } from "@/lib/remoteLogger";
+import WallpaperStudio from "./pages/WallpaperStudio";
 
 const queryClient = new QueryClient();
 
@@ -31,7 +32,8 @@ const App = () => {
       <TooltipProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<WallpaperStudio />} />
+            <Route path="/classic" element={<Index />} />
             <Route path="/help" element={<Help />} />
             {/* DEV-ONLY: Layout tools for algorithm tuning */}
             {import.meta.env.DEV && (

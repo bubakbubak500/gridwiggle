@@ -1,63 +1,76 @@
-# GridWiggle
+# GridWiggle · Wallpaper Studio
 
-Auto-layout photo collage maker. Upload photos, photos with people, dogs, or cats are auto-cropped, pick a photo or two to feature, and get a beautifully laid out grid collage — no manual arranging needed.
+Local wallpaper maker forked from [kclemson/gridwiggle](https://github.com/kclemson/gridwiggle).
+The original collage editor remains available at `/classic`. The new Czech wallpaper workspace is at `/`.
 
-![GridWiggle screenshot](./public/og-image.png)
+## What is included
 
-## Features
+- Import up to 100 mixed portrait and landscape photos by file picker or drag and drop.
+- Four modes: separated tiles, overlapping framed photos, soft image blends, and one wallpaper per photo.
+- Six seeded collage proposals at once, with a shuffle button for more compositions.
+- Exact pixel output or a custom width:height ratio plus a long-edge resolution. Presets include Full HD, QHD, 4K, ultrawide and portrait.
+- Local object detection using GridWiggle's DETR worker, extended to expose all supported object classes. People and animals take priority over furniture; groups of prominent subjects of the same class are retained together.
+- Manual selection of a detected object or a click on the original to choose a focus point. Every proposal has independent drag/arrow-key framing and 1–4× zoom.
+- Automatic whole-photo placement over a blurred background when the protected subject cannot fit in the target cell. Manual cover and contain overrides are available.
+- PNG, JPEG and WebP export from original images. Export all proposals or all standalone wallpapers as one ZIP.
+- Browser-local project autosave, including original photos, settings and framing.
+- A shared Canvas renderer for preview and export. Remote telemetry is disabled by default in this fork.
 
-- **Auto-layout** — constraint-based packing produces balanced, beautiful grids automatically
-- **Hero photos** — mark one or two photos as heroes for visual prominence
-- **AI smart crop** — detects people/faces/pets and crops to keep them visible; skips cropping for non-subject photos
-  - Desktop: on-device DETR model via Web Worker (Hugging Face Transformers.js)
-  - Mobile: server-side Gemini Flash vision (edge function) to avoid Safari ONNX crashes
-- **Shuffle** — regenerate layouts instantly for variety
-- **Export** — download high-resolution PNG collages
+## Run the ready-made Windows package
 
-## Tech Stack
+Extract the release ZIP and double-click **Start-Wallpaper.cmd**. It starts a server bound to `127.0.0.1` and opens the studio at `http://127.0.0.1:8080`.
+Keep the server window open while using the app; Ctrl+C stops it. The launcher uses an installed Node.js or the Codex bundled Node.js runtime when available. Otherwise install Node.js 22 or newer.
 
-- React + TypeScript + Vite
-- Tailwind CSS + shadcn/ui
-- Web Worker for non-blocking layout generation
-- On-device vision model (Hugging Face Transformers.js) + server-side Gemini Flash fallback
+The release contains a built `dist/`; dependency installation is unnecessary for using that package.
 
-## How It Works
+## Develop from source
 
-The layout engine uses constraint intersection and sub-rectangle decomposition to pack photos into a grid. Hero photos get area-based prominence (not just width). The algorithm evaluates multiple canvas partitioning strategies and scores them on area uniformity, shape compliance, and hero prominence — then picks the best one.
-
-**Algorithm flow:**
-
-1. **Hero separation** — identify hero photo(s) by weight; move the rest into a content pool.
-2. **Template selection** — pick candidate templates from a registry (corner-anchor, hero-column, hero-row, band variants, diagonal-corners for dual heroes), filtered by hero aspect ratio and canvas shape compatibility.
-3. **Geometry sampling** — for each template, sample combinations of *canvas aspect ratio* and *hero area fraction* (how much of the total canvas area the hero occupies, typically 15–40%).
-4. **Region decomposition** — compute the hero rectangle from those parameters, then decompose the remaining canvas into packable regions (e.g., corner-anchor produces a "beside" region and a "below" region).
-5. **Row-packing** — pack content photos into each region by deriving a target row count from photo count and mean aspect ratio, then filling rows so total height (or width) matches the region constraint.
-6. **Scoring** — evaluate each candidate on cell-area uniformity (F-ratio across size tiers), canvas AR deviation from target, hero prominence (hero area vs. top content areas), and hero coverage ceiling.
-7. **Selection** — pick the best candidate deterministically, or weighted-random among top scorers in shuffle mode.
-8. **Mirroring** — reflect the layout to a random corner for visual variety.
-
-Layout generation runs in a Web Worker so the UI stays responsive.
-
-## Development
+Requires Node.js 22+ and pnpm 11.25.0. `pnpm-lock.yaml` is the canonical lockfile.
 
 ```sh
-npm i
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-Dev-only pages are available at `/layout-test`, `/layout-rating`, and `/hero-fraction` for algorithm tuning.
+Open `http://localhost:8080`. To build and run the production version:
 
-### Dev Tools
+```sh
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm start
+```
 
-#### `/layout-test` — Layout Test
-Rapid iteration workbench for the layout algorithm. Generates synthetic photo sets (CSS rectangles, no real images) with configurable photo counts, hero counts, and orientation biases. Each shuffle runs the production layout engine and auto-captures metadata (success/failure, rejection reasons, timing, canvas geometry) to localStorage for batch export and offline analysis. Supports batch mode (Shuffle 25) for statistical sampling, saved photo sets for reproducible testing, and shows rejected layout geometry with rejection reason badges.
+For a server without automatically opening a browser, run `node scripts/serve.mjs`.
+Set `GRIDWIGGLE_PORT` to use a different port.
 
-#### `/layout-rating` — Layout Rating
-Supervised labeling tool for deriving layout quality rules. Generates a batch of ~44 stratified test cases covering different photo counts, hero counts, and canvas shapes, then presents each layout for thumbs-up/thumbs-down/skip rating. Users tag issues (hero-not-prominent, single-photo-row, wasted-space, etc.) or positives (well-balanced, hero-works, good-variety). Exports rated JSON for pattern analysis to calibrate scoring thresholds and quality gates.
+## Using the studio
 
-#### `/hero-fraction` — Hero Fraction Rating
-Calibration tool for hero area fraction targets. Uses CSS-only template previews (no layout engine) with stratified sampling across a 3×3 grid of canvas and hero aspect ratios (portrait/square/landscape) to ensure edge-case coverage. Supports multiple rating rounds with progressive refinement. Users tag qualitative issues (hero-too-large, cramped, bad-combo) and add notes. Exports JSON for tuning the fraction ranges used by the layout engine.
+1. Add photos. The composition is immediately usable while the optional AI model downloads and runs.
+2. Choose a mode and output dimensions. A ratio such as 21:9 with a 3440 px long edge produces 3440 × 1474 pixels after integer rounding. Use exact-pixel mode for 3440 × 1440.
+3. Pick a proposal. Click a photo to change its framing. Drag or use arrow keys over the crop preview; use the zoom slider, object outlines, or focus-point selection on the original.
+4. Keep subject protection enabled for automatic safe framing. A manual cover crop can cut the selected subject; the editor and main preview report that condition.
+5. Download the current wallpaper or export the complete set as ZIP. Output dimensions refer to pixels, without stretching source photos.
 
-## License
+Green photo indicators mean a detected object, yellow means a contrast/edge estimate, blue means manual selection, and gray means pending analysis.
 
-MIT
+## Privacy and practical limits
+
+Photos are processed on the device and stored only in this browser's IndexedDB. This fork does not upload photos or send remote logs by default. AI downloads model/runtime files from Hugging Face and the runtime's configured distribution host; those downloads require internet access on first use. Inference runs locally.
+
+DETR recognizes a fixed vocabulary of common objects, not every possible photographic subject. If no supported object is detected or inference fails, the studio marks the result as an estimate and lets you select a focus point yourself. Verify unusual scenes and illustrations manually.
+
+Each output side supports 64–16,384 pixels, with a 48-megapixel total limit. Individual imports are limited to 60 MB and must be decodable by the browser. Large originals and batch exports require sufficient browser memory. Subject protection may reduce overlap and blending near important details. Export does not invent additional image detail; low-resolution inputs can look soft when enlarged.
+
+Saved projects are tied to this browser and origin (including port). Clearing browser storage deletes the local draft. The standalone export is an image, not an editable project backup.
+
+`VITE_ENABLE_REMOTE_LOGGING=true` explicitly re-enables the upstream logger, so do not set it for a local-only installation.
+
+## Verification
+
+The test suite includes the original layout/crop tests plus fixed-ratio packing, mixed-orientation inputs, group/foreground protection, manual crop bounds, native Canvas rendering in all four modes, PNG/JPEG/WebP pixel dimensions, and ZIP structure checks.
+
+## Upstream and attribution
+
+Based on GridWiggle by [kclemson](https://github.com/kclemson), whose README declares the MIT license.
+The preserved [upstream README](README.upstream.md) describes the original application and its development tools; the capabilities and privacy behavior above describe this fork.

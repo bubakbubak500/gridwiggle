@@ -23,6 +23,8 @@ export const remoteLogger = {
       consoleFn(`[${category}] ${message}`, data ?? '');
     }
     
+    // Forks keep diagnostics local unless the owner explicitly configures remote logging.
+    if (import.meta.env.VITE_ENABLE_REMOTE_LOGGING !== 'true') return;
     // Buffer for remote sending
     logBuffer.push({
       timestamp: Date.now(),

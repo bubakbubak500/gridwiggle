@@ -55,7 +55,13 @@ async function loadModel(isMobile: boolean) {
     const device = isSafari ? "wasm" : (hasWebGPU ? "webgpu" : "wasm");
     
     self.postMessage({ type: 'status', message: `[diag] loading model=${modelName} device=${device} hasWebGPU=${hasWebGPU}` });
-    detector = await pipeline("object-detection", modelName, { device });
+    try {
+      detector = await pipeline("object-detection", modelName, { device, dtype: 'q8' });
+    } catch (error) {
+      if (device === 'wasm') throw error;
+      self.postMessage({ type: 'status', message: 'WebGPU není dostupné, přepínám na CPU…' });
+      detector = await pipeline("object-detection", modelName, { device: 'wasm', dtype: 'q8' });
+    }
     loadedForMobile = isMobile;
   }
   return detector;
@@ -211,6 +217,13 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       confidence: maxConfidence,
       subjects: subjectDescription,
       skipCrop,
+      detections: results.filter(r => r.score >= 0.5).map(r => ({
+        label: r.label, score: r.score,
+        x: Math.max(0, r.box.xmin / processedWidth),
+        y: Math.max(0, r.box.ymin / processedHeight),
+        width: Math.min(processedWidth, r.box.xmax) / processedWidth - Math.max(0, r.box.xmin / processedWidth),
+        height: Math.min(processedHeight, r.box.ymax) / processedHeight - Math.max(0, r.box.ymin / processedHeight),
+      })).filter(r => r.width * r.height >= 0.005),
     });
   } catch (error) {
     self.postMessage({
